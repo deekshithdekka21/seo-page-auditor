@@ -15,6 +15,32 @@ def fetch_page(url):
     return httpx.get(str(url), timeout=10, follow_redirects=True)
 
 
+def find_issues(title, meta_description, h1):
+    """Check extracted SEO data against simple rules. Returns a list of issue messages."""
+    issues = []
+
+    if title is None:
+        issues.append("Title is missing.")
+
+    if title and len(title) > 60:
+        issues.append(f"Title is too long ({len(title)} characters). Aim for 60 or fewer.")
+
+
+    if meta_description is None:
+        issues.append("Meta description is missing.")
+
+    if meta_description and len(meta_description) > 160:
+        issues.append(f"Meta description is too long ({len(meta_description)} characters). Aim for 160 or fewer.")
+
+    if len(h1) == 0:
+        issues.append("No H1 heading found.")
+
+    if len(h1) > 1:
+        issues.append(f"Multiple H1 headings found ({len(h1)}). Use one main H1.")
+
+    return issues
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -44,6 +70,8 @@ def audit(request: AuditRequest):
 
     h1 = [tag.get_text(strip=True) for tag in soup.find_all("h1")]
 
+    issues = find_issues(title, meta_description, h1)
+
     return {
         "url": str(request.url),
         "final_url": str(response.url),
@@ -52,4 +80,5 @@ def audit(request: AuditRequest):
         "title": title,
         "meta_description": meta_description,
         "h1": h1,
+        "issues": issues
     }
