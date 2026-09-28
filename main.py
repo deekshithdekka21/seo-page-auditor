@@ -1,6 +1,7 @@
+import httpx
+from bs4 import BeautifulSoup
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, HttpUrl
-import httpx
 
 app = FastAPI()
 
@@ -9,9 +10,9 @@ class AuditRequest(BaseModel):
     url: HttpUrl
 
 
-def get_response(req):
-    res = httpx.get(str(req.url), timeout=10, follow_redirects=True)
-    return res
+def fetch_page(url):
+    """Visit the page and return the response. Raises httpx errors on failure."""
+    return httpx.get(str(url), timeout=10, follow_redirects=True)
 
 
 @app.get("/health")
@@ -19,15 +20,36 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/audit")
+@app.post(
+    "/audit",
+    responses={
+        502: {"description": "Could not reach the website"},
+        504: {"description": "The website took too long to respond"},
+    },
+)
 def audit(request: AuditRequest):
     try:
-        response = get_response(request)
+        response = fetch_page(request.url)
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="the other site took too long")
+        raise HTTPException(status_code=504, detail="The website took too long to respond")
     except httpx.RequestError:
-        raise HTTPException(status_code=502, detail="I tried to reach the other site, and it failed")
+        raise HTTPException(status_code=502, detail="Could not reach the website")
 
+    soup = BeautifulSoup(response.text, "html.parser")
 
-    return {"url": str(request.url), "final_url": str(response.url), "status_code": response.status_code,
-            "content_type": response.headers.get("content-type")}
+    title = soup.title.string if soup.title else None
+
+    meta_tag = soup.find("meta", attrs={"name": "description"})
+    meta_description = meta_tag.get("content") if meta_tag else None
+
+    h1 = [tag.get_text(strip=True) for tag in soup.find_all("h1")]
+
+    return {
+        "url": str(request.url),
+        "final_url": str(response.url),
+        "status_code": response.status_code,
+        "content_type": response.headers.get("content-type"),
+        "title": title,
+        "meta_description": meta_description,
+        "h1": h1,
+    }
