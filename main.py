@@ -24,6 +24,7 @@ class SEOSuggestion(BaseModel):
     suggested_meta_description: str = Field(
         description="An improved meta description, 160 characters or fewer."
     )
+    suggested_h1: str = Field(description="One main H1 heading that states the page's topic.")
     reasoning: str = Field(description="One or two sentences explaining the changes.")
 
 
@@ -58,15 +59,16 @@ def find_issues(title, meta_description, h1):
 
 def suggest_improvements(title, meta_description, h1, issues):
     """Ask Gemini for a better title and meta description. Returns a validated SEOSuggestion."""
-    prompt = f"""You are an SEO assistant. Improve this page's title and meta description.
+    prompt = f"""You are an SEO assistant. Improve this page's title, meta description, and main H1 heading.
 
-Current title: {title}
-Current meta description: {meta_description}
-H1 headings: {h1}
-Issues found: {issues}
+    Current title: {title}
+    Current meta description: {meta_description}
+    H1 headings: {h1}
+    Issues found: {issues}
 
-Keep the title to 60 characters or fewer and the meta description to 160 or fewer.
-Base your suggestions only on the information given."""
+    Keep the title to 60 characters or fewer and the meta description to 160 or fewer.
+    Suggest exactly one main H1 that describes what the page is about.
+    Base your suggestions only on the information given."""
 
     interaction = client.interactions.create(
         model="gemini-3.8-flash",
@@ -112,7 +114,7 @@ def audit(request: AuditRequest):
     issues = find_issues(title, meta_description, h1)
 
     suggestion = None
-    suggestion_issues = []
+    suggestion_issues = None
     suggestion_error = None
 
     if issues:   # only ask the AI when there's something to fix
@@ -121,7 +123,9 @@ def audit(request: AuditRequest):
             suggestion = result.model_dump()
             # Check the AI's suggestions against our own rules
             suggestion_issues = find_issues(
-                result.suggested_title, result.suggested_meta_description, h1
+                result.suggested_title,
+                result.suggested_meta_description,
+                [result.suggested_h1],
             )
         except ValidationError:
             suggestion_error = "The AI returned an invalid response."
