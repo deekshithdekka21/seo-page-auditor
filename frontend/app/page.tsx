@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const API_URL = "http://localhost:8000";
 
@@ -57,16 +58,56 @@ function ResultCard({ result }: { result: AuditResult }) {
   );
 }
 
+type AuditRow = {
+  id: number;
+  created_at: string;
+  result: AuditResult;
+};
+
+function RecentAudits({ audits }: { audits: AuditRow[] }) {
+  if (audits.length === 0) {
+    return <p>No audits yet.</p>;
+  }
+  return (
+    <ul>
+      {audits.map((audit) => (
+        <li key={audit.id}>
+          {audit.result.url}: {audit.result.issues.length} issue(s),{" "}
+          {new Date(audit.created_at).toLocaleString()}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function Home() {
   const [url, setUrl] = useState("");
   const [result, setResult] = useState<AuditResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const [audits, setAudits] = useState<AuditRow[]>([]);
+
+  async function loadAudits() {
+     try {
+       const response = await fetch(`${API_URL}/audits`);
+       if (response.ok) {
+         setAudits(await response.json());
+       }
+     } catch {
+       // If the list can't load, the rest of the page still works
+     }
+   }
+
+   useEffect(() => {
+     loadAudits();
+   }, []);
+
   async function handleAudit() {
     setLoading(true);
     setError(null);
-    setResult(null);
+    setResult(data);
+    loadAudits();
 
     try {
       const response = await fetch(`${API_URL}/audit`, {
@@ -104,6 +145,9 @@ export default function Home() {
 
       {error && <p style={{ color: "red" }}>{error}</p>}
       {result && <ResultCard result={result} />}
+
+      <h2>Recent audits</h2>
+      <RecentAudits audits={audits} />
     </main>
   );
 }
