@@ -1,13 +1,30 @@
+import logging
+
 import httpx
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, HttpUrl
+from google import genai
+from pydantic import BaseModel, Field, HttpUrl, ValidationError
+
+logger = logging.getLogger(__name__)
+
+load_dotenv()
+client = genai.Client()   # created once, reused for every request
 
 app = FastAPI()
 
 
 class AuditRequest(BaseModel):
     url: HttpUrl
+
+
+class SEOSuggestion(BaseModel):
+    suggested_title: str = Field(description="An improved page title, 60 characters or fewer.")
+    suggested_meta_description: str = Field(
+        description="An improved meta description, 160 characters or fewer."
+    )
+    reasoning: str = Field(description="One or two sentences explaining the changes.")
 
 
 def fetch_page(url):
@@ -19,26 +36,48 @@ def find_issues(title, meta_description, h1):
     """Check extracted SEO data against simple rules. Returns a list of issue messages."""
     issues = []
 
-    if title is None:
+    if not title:
         issues.append("Title is missing.")
-
-    if title and len(title) > 60:
+    elif len(title) > 60:
         issues.append(f"Title is too long ({len(title)} characters). Aim for 60 or fewer.")
 
-
-    if meta_description is None:
+    if not meta_description:
         issues.append("Meta description is missing.")
-
-    if meta_description and len(meta_description) > 160:
-        issues.append(f"Meta description is too long ({len(meta_description)} characters). Aim for 160 or fewer.")
+    elif len(meta_description) > 160:
+        issues.append(
+            f"Meta description is too long ({len(meta_description)} characters). Aim for 160 or fewer."
+        )
 
     if len(h1) == 0:
         issues.append("No H1 heading found.")
-
-    if len(h1) > 1:
+    elif len(h1) > 1:
         issues.append(f"Multiple H1 headings found ({len(h1)}). Use one main H1.")
 
     return issues
+
+
+def suggest_improvements(title, meta_description, h1, issues):
+    """Ask Gemini for a better title and meta description. Returns a validated SEOSuggestion."""
+    prompt = f"""You are an SEO assistant. Improve this page's title and meta description.
+
+Current title: {title}
+Current meta description: {meta_description}
+H1 headings: {h1}
+Issues found: {issues}
+
+Keep the title to 60 characters or fewer and the meta description to 160 or fewer.
+Base your suggestions only on the information given."""
+
+    interaction = client.interactions.create(
+        model="gemini-3.8-flash",
+        input=prompt,
+        response_format={
+            "type": "text",
+            "mime_type": "application/json",
+            "schema": SEOSuggestion.model_json_schema(),
+        },
+    )
+    return SEOSuggestion.model_validate_json(interaction.output_text)
 
 
 @app.get("/health")
@@ -72,6 +111,24 @@ def audit(request: AuditRequest):
 
     issues = find_issues(title, meta_description, h1)
 
+    suggestion = None
+    suggestion_issues = []
+    suggestion_error = None
+
+    if issues:   # only ask the AI when there's something to fix
+        try:
+            result = suggest_improvements(title, meta_description, h1, issues)
+            suggestion = result.model_dump()
+            # Check the AI's suggestions against our own rules
+            suggestion_issues = find_issues(
+                result.suggested_title, result.suggested_meta_description, h1
+            )
+        except ValidationError:
+            suggestion_error = "The AI returned an invalid response."
+        except Exception as error:
+            logger.warning("AI suggestion failed: %s", error)
+            suggestion_error = "AI suggestions are unavailable right now."
+
     return {
         "url": str(request.url),
         "final_url": str(response.url),
@@ -80,5 +137,8 @@ def audit(request: AuditRequest):
         "title": title,
         "meta_description": meta_description,
         "h1": h1,
-        "issues": issues
+        "issues": issues,
+        "suggestion": suggestion,
+        "suggestion_issues": suggestion_issues,
+        "suggestion_error": suggestion_error,
     }
