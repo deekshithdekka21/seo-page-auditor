@@ -1,16 +1,23 @@
 import logging
+import os
 
 import httpx
+import psycopg
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from google import genai
+from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field, HttpUrl, ValidationError
 
 logger = logging.getLogger(__name__)
 
 load_dotenv()
 client = genai.Client()   # created once, reused for every request
+
+# Optional: when DATABASE_URL isn't set, audits simply aren't saved
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 app = FastAPI()
 
@@ -58,17 +65,17 @@ def find_issues(title, meta_description, h1):
 
 
 def suggest_improvements(title, meta_description, h1, issues):
-    """Ask Gemini for a better title and meta description. Returns a validated SEOSuggestion."""
+    """Ask Gemini for a better title, meta description and H1. Returns a validated SEOSuggestion."""
     prompt = f"""You are an SEO assistant. Improve this page's title, meta description, and main H1 heading.
 
-    Current title: {title}
-    Current meta description: {meta_description}
-    H1 headings: {h1}
-    Issues found: {issues}
+Current title: {title}
+Current meta description: {meta_description}
+H1 headings: {h1}
+Issues found: {issues}
 
-    Keep the title to 60 characters or fewer and the meta description to 160 or fewer.
-    Suggest exactly one main H1 that describes what the page is about.
-    Base your suggestions only on the information given."""
+Keep the title to 60 characters or fewer and the meta description to 160 or fewer.
+Suggest exactly one main H1 that describes what the page is about.
+Base your suggestions only on the information given."""
 
     interaction = client.interactions.create(
         model="gemini-3.8-flash",
@@ -80,6 +87,28 @@ def suggest_improvements(title, meta_description, h1, issues):
         },
     )
     return SEOSuggestion.model_validate_json(interaction.output_text)
+
+
+CREATE_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS audits (
+    id         SERIAL PRIMARY KEY,
+    url        TEXT NOT NULL,
+    result     JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+"""
+
+
+def save_audit(result):
+    """Store one audit result in Postgres. Does nothing if no database is configured."""
+    if not DATABASE_URL:
+        return
+    with psycopg.connect(DATABASE_URL) as conn:
+        conn.execute(CREATE_TABLE_SQL)
+        conn.execute(
+            "INSERT INTO audits (url, result) VALUES (%s, %s)",
+            (result["url"], Jsonb(result)),
+        )
 
 
 @app.get("/health")
@@ -133,7 +162,7 @@ def audit(request: AuditRequest):
             logger.warning("AI suggestion failed: %s", error)
             suggestion_error = "AI suggestions are unavailable right now."
 
-    return {
+    audit_result = {
         "url": str(request.url),
         "final_url": str(response.url),
         "status_code": response.status_code,
@@ -146,3 +175,25 @@ def audit(request: AuditRequest):
         "suggestion_issues": suggestion_issues,
         "suggestion_error": suggestion_error,
     }
+
+    try:
+        save_audit(audit_result)
+    except psycopg.Error as error:
+        logger.warning("Could not save audit: %s", error)
+
+    return audit_result
+
+
+@app.get("/audits")
+@app.get("/audits")
+def list_audits(limit: int = 20):
+    """Return the most recent audits, newest first."""
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="No database is configured.")
+    with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
+        conn.execute(CREATE_TABLE_SQL)
+        rows = conn.execute(
+            "SELECT id, created_at, result FROM audits ORDER BY created_at DESC LIMIT %s",
+            (limit,),
+        ).fetchall()
+    return rows
