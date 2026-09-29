@@ -6,6 +6,7 @@ import psycopg
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
@@ -20,6 +21,13 @@ client = genai.Client()   # created once, reused for every request
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],   # the front end's origin
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class AuditRequest(BaseModel):
