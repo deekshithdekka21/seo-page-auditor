@@ -21,6 +21,7 @@ client = genai.Client()  # created once, reused for every request
 
 # Optional: when DATABASE_URL isn't set, audits simply aren't saved
 DATABASE_URL = os.environ.get("DATABASE_URL")
+AI_ENABLED = os.environ.get("AI_SUGGESTIONS", "on") != "off"
 
 app = FastAPI()
 
@@ -182,7 +183,7 @@ def audit(request: AuditRequest):
     suggestion_issues = None
     suggestion_error = None
 
-    if issues:  # only ask the AI when there's something to fix
+    if issues and AI_ENABLED:  # only ask the AI when there's something to fix
         try:
             result = suggest_improvements(title, meta_description, h1, issues)
             suggestion = result.model_dump()
@@ -197,6 +198,8 @@ def audit(request: AuditRequest):
         except Exception as error:
             logger.warning("AI suggestion failed: %s", error)
             suggestion_error = "AI suggestions are unavailable right now."
+    elif issues:
+        suggestion_error = "AI suggestions are turned off."
 
     audit_result = {
         "url": str(request.url),
