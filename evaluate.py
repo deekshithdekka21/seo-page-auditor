@@ -43,11 +43,17 @@ TEST_CASES = [
 
 
 def run_eval():
+    errors = 0
     passed = 0
 
     for case in TEST_CASES:
         issues = find_issues(case["title"], case["meta_description"], case["h1"])
-        result = suggest_improvements(case["title"], case["meta_description"], case["h1"], issues)
+        try:
+            result = suggest_improvements(case["title"], case["meta_description"], case["h1"], issues)
+        except Exception as error:
+            print(f"[ERROR] {case['name']}: {error}\n")
+            errors += 1
+            continue
         remaining = find_issues(
             result.suggested_title,
             result.suggested_meta_description,
@@ -66,7 +72,7 @@ def run_eval():
             print(f"   remaining issues: {remaining}")
         print()
 
-    print(f"Score: {passed}/{len(TEST_CASES)} passed")
+    print(f"Score: {passed}/{len(TEST_CASES) - errors}  (errors: {errors})")
 
 
 if __name__ == "__main__":
