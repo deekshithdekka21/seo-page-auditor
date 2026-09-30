@@ -1,5 +1,8 @@
 # SEO Page Auditor
 
+**Live demo:** https://seo-page-auditor-eight.vercel.app
+(Free hosting: the first audit after ~15 minutes idle can take about a minute while the API wakes up. AI suggestions may be turned off or limited to preserve the free Gemini quota.)
+
 Paste a URL and get an SEO check of its title, meta description and H1 headings, plus AI-suggested improvements from Google Gemini. Every audit is saved to Postgres and shown in a "recent audits" list.
 
 ## How it works
@@ -22,6 +25,7 @@ FastAPI backend (Docker, port 8000)
 - **Optional database:** if `DATABASE_URL` isn't set, audits still work and just aren't saved.
 
 ## Tech stack
+| Hosting | Vercel (frontend), Render (API, Docker), Neon (Postgres) |
 
 | Layer | Choice |
 |---|---|
