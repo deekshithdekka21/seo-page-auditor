@@ -5,7 +5,6 @@ import httpx
 import psycopg
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from psycopg.rows import dict_row
@@ -13,6 +12,7 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field, HttpUrl, ValidationError
 import ipaddress
 import socket
+from fastapi import FastAPI, HTTPException, Query
 
 logger = logging.getLogger(__name__)
 
@@ -229,7 +229,7 @@ def audit(request: AuditRequest):
 
 @app.get("/audits")
 @app.get("/audits")
-def list_audits(limit: int = 20):
+def list_audits(limit: int = Query(20, ge=1, le=100)):
     """Return the most recent audits, newest first."""
     if not DATABASE_URL:
         raise HTTPException(status_code=503, detail="No database is configured.")
