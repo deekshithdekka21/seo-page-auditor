@@ -22,12 +22,13 @@ client = genai.Client()  # created once, reused for every request
 # Optional: when DATABASE_URL isn't set, audits simply aren't saved
 DATABASE_URL = os.environ.get("DATABASE_URL")
 AI_ENABLED = os.environ.get("AI_SUGGESTIONS", "on") != "off"
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # the front end's origin
+    allow_origins=ALLOWED_ORIGINS,  # the front end's origin
     allow_methods=["*"],
     allow_headers=["*"],
 )
