@@ -83,3 +83,5 @@ Because the server fetches any URL a user gives it, it could be tricked into req
 - Gemini's free tier allows a limited number of requests per day. When the limit is reached, audits return without AI suggestions.
 - CORS currently allows only `http://localhost:3000`. This needs updating for a deployed frontend.
 - Only the title, meta description and H1s are checked.
+
+![Tests](https://github.com/deekshithdekka21/seo-page-auditor/actions/workflows/tests.yml/badge.svg)
