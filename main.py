@@ -86,10 +86,13 @@ def find_issues(title, meta_description, h1):
 
     if not meta_description:
         issues.append("Meta description is missing.")
+
     elif len(meta_description) > 160:
         issues.append(
             f"Meta description is too long ({len(meta_description)} characters). Aim for 160 or fewer."
         )
+    elif len(meta_description) < 70:
+        issues.append(f"Meta description is too short ({len(meta_description)} characters). Aim for 70 or more.")
 
     if len(h1) == 0:
         issues.append("No H1 heading found.")
