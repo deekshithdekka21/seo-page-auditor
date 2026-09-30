@@ -44,10 +44,18 @@ class SEOSuggestion(BaseModel):
     suggested_h1: str = Field(description="One main H1 heading that states the page's topic.")
     reasoning: str = Field(description="One or two sentences explaining the changes.")
 
+MAX_REDIRECTS = 5
 
 def fetch_page(url):
-    """Visit the page and return the response. Raises httpx errors on failure."""
-    return httpx.get(str(url), timeout=10, follow_redirects=True)
+    """Fetch a page, following redirects ourselves so every hop's address is checked."""
+    for hop in range(MAX_REDIRECTS + 1):
+        if not is_public_host(url.host):
+            raise HTTPException(status_code=400, detail="That address isn't allowed.")
+        response = httpx.get(str(url), timeout=10, follow_redirects=False)
+        if not response.is_redirect:
+            return response
+        url = response.next_request.url
+    raise HTTPException(status_code=502, detail="The website redirected too many times.")
 
 
 def is_public_host(hostname):
@@ -151,9 +159,6 @@ def health():
     },
 )
 def audit(request: AuditRequest):
-
-    if not is_public_host(request.url.host):
-        raise HTTPException(status_code=400, detail="That address isn't allowed.")
 
     try:
         response = fetch_page(request.url)
