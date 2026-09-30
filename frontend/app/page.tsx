@@ -102,11 +102,10 @@ export default function Home() {
      loadAudits();
    }, []);
 
-  async function handleAudit() {
+async function handleAudit() {
     setLoading(true);
     setError(null);
-    setResult(data);
-    loadAudits();
+    setResult(null);          // reset: clear the old result
 
     try {
       const response = await fetch(`${API_URL}/audit`, {
@@ -114,12 +113,13 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
-      const data = await response.json();
+      const data = await response.json();   // data is created here
 
       if (!response.ok) {
         setError(typeof data.detail === "string" ? data.detail : "Please enter a valid URL.");
       } else {
-        setResult(data);
+        setResult(data);      // success: show the new result
+        loadAudits();         // and refresh the list
       }
     } catch {
       setError("Could not reach the API. Is it running?");

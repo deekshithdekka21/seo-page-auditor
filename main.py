@@ -11,11 +11,13 @@ from google import genai
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field, HttpUrl, ValidationError
+import ipaddress
+import socket
 
 logger = logging.getLogger(__name__)
 
 load_dotenv()
-client = genai.Client()   # created once, reused for every request
+client = genai.Client()  # created once, reused for every request
 
 # Optional: when DATABASE_URL isn't set, audits simply aren't saved
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -24,7 +26,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],   # the front end's origin
+    allow_origins=["http://localhost:3000"],  # the front end's origin
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -46,6 +48,22 @@ class SEOSuggestion(BaseModel):
 def fetch_page(url):
     """Visit the page and return the response. Raises httpx errors on failure."""
     return httpx.get(str(url), timeout=10, follow_redirects=True)
+
+
+def is_public_host(hostname):
+    """True only if every IP address this hostname points to is a public internet address."""
+
+    try:
+        addresses = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        return True  # the name doesn't resolve; the fetch will fail with 502 anyway
+
+    for address in addresses:
+        ip_text = address[4][0].split("%")[0]  # strip IPv6 zone like "%en0"
+        ip = ipaddress.ip_address(ip_text)
+        if not ip.is_global:
+            return False
+    return True
 
 
 def find_issues(title, meta_description, h1):
@@ -129,9 +147,14 @@ def health():
     responses={
         502: {"description": "Could not reach the website"},
         504: {"description": "The website took too long to respond"},
+        400: {"description": "Address not allowed"}
     },
 )
 def audit(request: AuditRequest):
+
+    if not is_public_host(request.url.host):
+        raise HTTPException(status_code=400, detail="That address isn't allowed.")
+
     try:
         response = fetch_page(request.url)
     except httpx.TimeoutException:
@@ -154,7 +177,7 @@ def audit(request: AuditRequest):
     suggestion_issues = None
     suggestion_error = None
 
-    if issues:   # only ask the AI when there's something to fix
+    if issues:  # only ask the AI when there's something to fix
         try:
             result = suggest_improvements(title, meta_description, h1, issues)
             suggestion = result.model_dump()

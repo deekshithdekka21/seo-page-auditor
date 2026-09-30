@@ -1,5 +1,4 @@
-from main import find_issues
-
+from main import find_issues, is_public_host
 
 def test_good_page_has_no_issues():
     issues = find_issues(
@@ -14,9 +13,6 @@ def test_missing_meta_description():
     issues = find_issues("A Good Title", None, ["One Heading"])
     assert issues == ["Meta description is missing."]
 
-
-# TODO: write these four yourself
-# def test_missing_title():
 
 def test_missing_title():
     issues = find_issues(None, "This is a very good meta description", ["This is heading too"])
@@ -40,5 +36,18 @@ def test_multiple_h1s():
         ["Get your Passport", "Cheap Tickets", "Getting Phones"],
     )
     assert issues == ["Multiple H1 headings found (3). Use one main H1."]
+
+
+def test_loopback_is_blocked():
+    assert is_public_host("127.0.0.1") is False
+
+def test_private_network_is_blocked():
+    assert is_public_host("10.0.0.5") is False
+
+def test_cloud_metadata_is_blocked():
+    assert is_public_host("169.254.169.254") is False
+
+def test_public_address_is_allowed():
+    assert is_public_host("8.8.8.8") is True
 
 
